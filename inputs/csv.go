@@ -27,6 +27,8 @@ type CSVInputOptions struct {
 	Separator rune
 	// ReadFrom is where the data will be read from.
 	ReadFrom io.Reader
+	// SkipRows is the number of first rows to be skspped.
+	SkipRows int
 }
 
 // NewCSVInput sets up a new CSVInput, the first row is read when this is run.
@@ -110,6 +112,13 @@ func (csvInput *CSVInput) ReadRecord() []string {
 
 func (csvInput *CSVInput) readHeader() error {
 	var readErr error
+
+	for i := 0; i < csvInput.options.SkipRows; i++ {
+		if _, readErr = csvInput.reader.Read(); readErr != nil {
+			log.Fatalln(readErr)
+			return readErr
+		}
+	}
 
 	csvInput.firstRow, readErr = csvInput.reader.Read()
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/dinedal/textql/inputs"
@@ -29,6 +30,7 @@ type commandLineOptions struct {
 	Quiet           *bool
 	Pretty          *bool
 	PrimaryKey      *string
+	SkipRows        *string
 }
 
 // Must be set at build via -ldflags "-X main.VERSION=`cat VERSION`"
@@ -48,6 +50,7 @@ func newCommandLineOptions() *commandLineOptions {
 	cmdLineOpts.Quiet = flag.Bool("quiet", false, "Surpress logging")
 	cmdLineOpts.Pretty = flag.Bool("pretty", false, "Output pretty formatting")
 	cmdLineOpts.PrimaryKey = flag.String("pkey", "", "Specify primary key for a table")
+	cmdLineOpts.SkipRows = flag.String("skip", "", "Skip first n rows when loading the input files")
 	flag.Usage = cmdLineOpts.Usage
 	flag.Parse()
 
@@ -103,7 +106,19 @@ func (clo *commandLineOptions) GetPretty() bool {
 }
 
 func (clo *commandLineOptions) GetPrimaryKey() []string {
-	return strings.Split(*clo.PrimaryKey, ",")
+	if *clo.PrimaryKey == "" {
+		return []string{}
+	} else {
+		return strings.Split(*clo.PrimaryKey, ",")
+	}
+}
+
+func (clo *commandLineOptions) GetSkipRows() []string {
+	if *clo.SkipRows == "" {
+		return []string{}
+	} else {
+		return strings.Split(*clo.SkipRows, ",")
+	}
 }
 
 func (clo *commandLineOptions) Usage() {
@@ -165,10 +180,20 @@ func main() {
 
 	storage := storage.NewSQLite3StorageWithDefaults()
 
-	for _, taggedName := range inputSources {
+	for i, taggedName := range inputSources {
 		// support <tablename>:<filename> syntax
 		var names = strings.SplitN(taggedName, ":", 2)
 		var file = names[len(names)-1]
+
+		skip := 0
+		optskips := cmdLineOpts.GetSkipRows()
+		if i < len(optskips) {
+			n, err := strconv.Atoi(optskips[i])
+			if err != nil {
+				log.Fatalln(err)
+			}
+			skip = n
+		}
 
 		fp := util.OpenFileOrStdDev(file, false)
 
@@ -176,6 +201,7 @@ func main() {
 			HasHeader: cmdLineOpts.GetHeader(),
 			Separator: util.DetermineSeparator(cmdLineOpts.GetDelimiter()),
 			ReadFrom:  fp,
+			SkipRows:  skip,
 		}
 
 		input, inputErr := inputs.NewCSVInput(inputOpts)
@@ -187,7 +213,7 @@ func main() {
 		if len(names) > 1 {
 			input.SetName(names[0])
 		}
-		storage.LoadInput(input, cmdLineOpts.GetPrimaryKey())
+		storage.LoadInput(input, cmdLineOpts.GetPrimaryKey(), skip)
 	}
 
 	sqlStrings := strings.Split(cmdLineOpts.GetStatements(), ";")

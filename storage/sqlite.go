@@ -78,7 +78,7 @@ func (sqlite3Storage *SQLite3Storage) open() {
 
 // LoadInput reads the entire Input provided into a table named after the Input name.
 // The name is cooreced into a valid SQLite3 table name prior to use.
-func (sqlite3Storage *SQLite3Storage) LoadInput(input inputs.Input, pkey []string) {
+func (sqlite3Storage *SQLite3Storage) LoadInput(input inputs.Input, pkey []string, skip int) {
 	tableName := strings.Replace(input.Name(), path.Ext(input.Name()), "", -1)
 	sqlite3Storage.createTable(tableName, input.Header(), pkey, false)
 
@@ -90,13 +90,15 @@ func (sqlite3Storage *SQLite3Storage) LoadInput(input inputs.Input, pkey []strin
 
 	stmt := sqlite3Storage.createLoadStmt(tableName, len(input.Header()), tx)
 
-	row := input.ReadRecord()
+	row, count := input.ReadRecord(), 1
 	for {
 		if row == nil {
 			break
 		}
-		sqlite3Storage.loadRow(tableName, len(input.Header()), row, tx, stmt, true)
-		row = input.ReadRecord()
+		if count > skip {
+			sqlite3Storage.loadRow(tableName, len(input.Header()), row, tx, stmt, true)
+		}
+		row, count = input.ReadRecord(), count+1
 	}
 	stmt.Close()
 	tx.Commit()
